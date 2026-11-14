@@ -3,11 +3,12 @@ import {useEffect,useRef,useState} from 'react';
 import type {Course} from '../lib/planner';
 import type {AgentDraft} from '../lib/day-agent';
 type Message={role:'user'|'assistant';content:string};
-export default function AgentChat({onReady}:{onReady:(course:Course)=>void}){
+export default function AgentChat({onReady,seed}:{onReady:(course:Course)=>void;seed?:Course}){
  const [messages,setMessages]=useState<Message[]>([{role:'assistant',content:'안녕! 나와예요 👋 오늘 누구와 어디서 놀고 싶어요? 하고 싶은 일부터 편하게 이야기해 주세요.'}]);
  const [draft,setDraft]=useState<AgentDraft>({}),[course,setCourse]=useState<Course|null>(null),[text,setText]=useState(''),[busy,setBusy]=useState(false),[stage,setStage]=useState(''),[error,setError]=useState(''),[target,setTarget]=useState<number|null>(null);
  const abort=useRef<AbortController|null>(null),bottom=useRef<HTMLDivElement>(null),input=useRef<HTMLTextAreaElement>(null);
  useEffect(()=>()=>abort.current?.abort(),[]);
+ useEffect(()=>{const p=seed?.preferences;if(!p)return;setCourse(seed!);setDraft(d=>({...d,region:p.region,start:p.start,end:p.end,budget:p.budget,people:p.people,companion:p.companion,transport:p.transport as AgentDraft['transport'],activities:p.activities as AgentDraft['activities'],indoor:p.indoor,shortWalk:!!p.maxLegMinutes,request:p.request}));},[seed]);
  useEffect(()=>{bottom.current?.scrollIntoView({block:'nearest'});},[messages,stage]);
  async function send(suggestion?:string){
   if(abort.current||busy||!(suggestion??text).trim())return;const content=(suggestion??text).trim();const previous=messages.slice(-10);setMessages(m=>m.at(-1)?.role==='user'&&m.at(-1)?.content===content?m:[...m,{role:'user',content}]);setText('');setBusy(true);setError('');abort.current=new AbortController();
@@ -15,7 +16,7 @@ export default function AgentChat({onReady}:{onReady:(course:Course)=>void}){
    const r=await fetch('/api/agent',{method:'POST',headers:{'Content-Type':'application/json'},signal:abort.current.signal,body:JSON.stringify({message:content,draft,course,target,history:previous})});
    if(!r.ok||!r.body)throw new Error('요청을 보내지 못했어요. 다시 시도해 주세요.');
    const reader=r.body.getReader(),decoder=new TextDecoder();let buffer='',completed=false;
-   for(;;){const chunk=await reader.read();buffer+=decoder.decode(chunk.value,{stream:!chunk.done});const lines=buffer.split('\n');buffer=lines.pop()||'';for(const line of lines){if(!line.trim())continue;const event=JSON.parse(line);if(event.type==='status')setStage(event.message);if(event.type==='error')throw new Error(event.message);if(event.type==='result'){setDraft(event.draft);setCourse(event.course);setMessages(m=>[...m,{role:'assistant',content:event.message}]);setTarget(null);completed=true;if(event.ready&&event.course?.preferences){if(!input.current?.value.trim())onReady(event.course);}}}if(chunk.done)break;}
+   for(;;){const chunk=await reader.read();buffer+=decoder.decode(chunk.value,{stream:!chunk.done});const lines=buffer.split('\n');buffer=lines.pop()||'';for(const line of lines){if(!line.trim())continue;const event=JSON.parse(line);if(event.type==='status')setStage(event.message);if(event.type==='error')throw new Error(event.message);if(event.type==='result'){setDraft(event.draft);if(event.ready)setCourse(event.course);setMessages(m=>[...m,{role:'assistant',content:event.message}]);setTarget(null);completed=true;if(event.ready&&event.course?.preferences){if(!input.current?.value.trim())onReady(event.course);}}}if(chunk.done)break;}
    if(!completed)throw new Error('응답이 중단됐어요. 기존 코스는 유지했습니다. 다시 보내 주세요.');
   }catch(e){setError(e instanceof Error&&e.name==='AbortError'?'요청을 취소했어요. 기존 코스는 유지됩니다.':(e as Error).message);setText(content);}
   finally{setBusy(false);setStage('');abort.current=null;}
