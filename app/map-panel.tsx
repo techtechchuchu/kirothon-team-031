@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
 import type {Course} from '../lib/planner';
+import {crowdedPin,shortSegment} from '../lib/route-links';
 import 'leaflet/dist/leaflet.css';
 
 // 카카오맵 JavaScript 키. 브라우저에 노출되는 키이므로 카카오디벨로퍼스에서 사이트 도메인을 등록해 사용을 제한한다.
@@ -27,9 +28,15 @@ function loadKakao():Promise<Kakao>{
  return kakaoLoading;
 }
 
-function markerElement(className:string,text:string,title:string){
+/** 번호 핀. time이 있으면 도착 시각을 옆에 붙이고, info가 있으면 누를 때 상세를 펼친다. */
+function markerElement(className:string,text:string,title:string,time?:string,info?:string){
  const wrap=document.createElement('div');wrap.className=className;wrap.title=title;
  const span=document.createElement('span');span.textContent=text;wrap.appendChild(span);
+ if(time){const em=document.createElement('em');em.className='pin-time';em.textContent=time;wrap.appendChild(em);}
+ if(info){
+  const box=document.createElement('div');box.className='pin-info';box.textContent=info;wrap.appendChild(box);
+  wrap.addEventListener('click',()=>wrap.classList.toggle('open'));
+ }
  return wrap;
 }
 
@@ -38,15 +45,24 @@ function drawKakao(k:Kakao,el:HTMLDivElement,lat:number,lng:number,course?:Cours
  const map=new maps.Map(el,{center:new maps.LatLng(lat,lng),level:4,scrollwheel:false});
  map.addControl(new maps.ZoomControl(),maps.ControlPosition.RIGHT);
  const stops=course?.stops;
+ const transport=course?.preferences?.transport||'도보';
  if(stops?.length){
   const path=stops.map(s=>new maps.LatLng(s.lat,s.lng));
   new maps.Polyline({map,path,strokeWeight:4,strokeColor:'#9856e8',strokeOpacity:.8,strokeStyle:'shortdash'});
   const bounds=new maps.LatLngBounds();
   stops.forEach((s,i)=>{
-   const pin=markerElement('number-marker kakao-pin',String(i+1),s.name);
-   pin.setAttribute('aria-label',`${i+1}번 ${s.name}`);
-   new maps.CustomOverlay({map,position:path[i],content:pin,yAnchor:1,xAnchor:.5});
+   // 가까운 핀끼리는 시각 라벨이 겹치므로 앞 핀과 가까우면 번호만 보인다.
+   const time=crowdedPin(stops,i)?undefined:s.arrival;
+   const info=`${s.arrival}~${s.departure} · ${s.name} · ${s.category} ${s.duration}분`;
+   const pin=markerElement('number-marker kakao-pin',String(i+1),s.name,time,info);
+   pin.setAttribute('aria-label',`${i+1}번 ${s.arrival} ${s.name}`);
+   new maps.CustomOverlay({map,position:path[i],content:pin,yAnchor:1,xAnchor:.5,clickable:true,zIndex:2});
    bounds.extend(path[i]);
+   // 구간 가운데에 이동시간(추정)을 표시한다. 구간이 짧으면 생략한다.
+   if(!shortSegment(stops,i)){
+    const label=document.createElement('div');label.className='seg-label';label.textContent=`${transport} 약 ${s.travel}분`;
+    new maps.CustomOverlay({map,position:new maps.LatLng((stops[i-1].lat+s.lat)/2,(stops[i-1].lng+s.lng)/2),content:label,yAnchor:.5,xAnchor:.5,zIndex:1});
+   }
   });
   if(stops.length>1)map.setBounds(bounds,45,45,45,45);else map.setCenter(path[0]);
  }else{
@@ -71,7 +87,10 @@ export default function MapPanel({lat,lng,course}:{lat:number;lng:number;course?
    if(stops?.length){
     const coords=stops.map(s=>[s.lat,s.lng] as [number,number]);
     L.polyline(coords,{color:'#9856e8',weight:4,dashArray:'7 9',opacity:.8}).addTo(map);
-    stops.forEach((s,i)=>{const marker=L.marker([s.lat,s.lng],{icon:L.divIcon({className:'number-marker',html:`<span>${i+1}</span>`,iconSize:[32,38],iconAnchor:[16,35]})}).addTo(map!);const label=document.createElement('div');label.textContent=s.name;marker.bindPopup(label);});
+    stops.forEach((s,i)=>{
+     const marker=L.marker([s.lat,s.lng],{icon:L.divIcon({className:'number-marker',html:`<span>${i+1}</span>`,iconSize:[32,38],iconAnchor:[16,35]})}).addTo(map!);
+     const label=document.createElement('div');label.textContent=`${s.arrival}~${s.departure} · ${s.name}`;marker.bindPopup(label);
+    });
     map.fitBounds(L.latLngBounds(coords),{padding:[45,45],maxZoom:16});
    }else{
     L.marker([lat,lng],{icon:L.divIcon({className:'center-marker',html:'<span></span>',iconSize:[24,24]})}).addTo(map);
