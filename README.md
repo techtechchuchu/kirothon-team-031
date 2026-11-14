@@ -346,7 +346,7 @@ npm run build
 
 **KIROTHON 저장소:** https://github.com/techtechchuchu/kirothon-team-031
 
-**데모 영상:** [시연 영상 업로드 후 링크 추가]
+**데모 영상:** 
 
 ### 권장 시연 순서
 
