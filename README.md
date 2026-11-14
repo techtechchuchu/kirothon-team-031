@@ -4,6 +4,9 @@
 
 ## KIROTHON 2026 변경 사항 (팀 현디벨롭)
 
+- KIROTHON 작업 저장소: https://github.com/techtechchuchu/kirothon-team-031 (이전 이름 `Ildan-Nawa-Kirothon`)
+- 기존 프로젝트 저장소(KIROTHON 이전, 변경하지 않음): https://github.com/techtechchuchu/Ildan-Nawa
+
 이 저장소는 KIROTHON 이전에 만든 일단나와 코드를 바탕으로 합니다. 아래는 이번 행사에서 새로 바꾼 부분과, 이전부터 있던 부분의 구분입니다. 기존 코드 사용에 관한 행사 규정은 확인되지 않았으며, 준수 여부를 이 문서에서 단정하지 않습니다.
 
 ### 이번 행사에서 변경한 것 (커밋 전 작업 내용)
