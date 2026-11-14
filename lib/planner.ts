@@ -1,5 +1,5 @@
 export type Place = { id: string; name: string; lat: number; lng: number; category: string; cost: number; duration: number; url: string; address?: string; cuisine?: string; indoor: boolean; source?: 'kakao'|'osm'|'sample'; sourceCategory?: string; phone?: string; priceBasis?: 'category_estimate'; verified?: { note: string } };
-export type Preferences = { region: string; lat: number; lng: number; companion: string; people: number; start: string; end: string; budget: number; transport: string; activities: string[]; food: string; indoor: boolean; request: string; excluded?: string[] };
+export type Preferences = { region: string; lat: number; lng: number; companion: string; people: number; start: string; end: string; budget: number; transport: string; activities: string[]; food: string; indoor: boolean; request: string; excluded?: string[]; maxLegMinutes?: number; maxTravelMinutes?: number };
 export type Stop = Place & { arrival: string; departure: string; travel: number; reason: string };
 export type Course = { id: string; title: string; subtitle: string; stops: Stop[]; total: number; minutes: number; preferences?: Preferences };
 export const categories: Record<string, { cost: number; duration: number }> = { '식사': {cost:14000,duration:60}, '카페': {cost:6500,duration:45}, '산책': {cost:0,duration:40}, '문화': {cost:10000,duration:60}, '놀거리': {cost:15000,duration:60} };
@@ -31,13 +31,14 @@ export function mealRequired(prefs:Preferences):boolean{
 /** 받은 순서 그대로 일정을 만든다. 순서를 바꾸지 않는다(장소 바꾸기에서 순서 유지를 위해). */
 export function schedule(places:Place[],prefs:Preferences,title:string,subtitle:string,id:string):Course {
  let now=minutes(prefs.start), deadline=minutes(prefs.end); if(deadline<=now)deadline+=1440;
- const begin=now;let last={lat:prefs.lat,lng:prefs.lng},total=0;const stops:Stop[]=[];const used=new Set<string>();
+ const begin=now;let last={lat:prefs.lat,lng:prefs.lng},total=0;const stops:Stop[]=[];let travelTotal=0;const used=new Set<string>();
  const multiCafe=/카페[ ]*(투어|여러|2곳|3곳)/.test(prefs.request);
  for(const p of places){
   if(used.has(p.id)||prefs.excluded?.includes(p.category)||(prefs.activities.length>0&&!prefs.activities.includes(p.category))||(prefs.indoor&&!p.indoor))continue;
   if(p.category==='카페'&&stops.some(s=>s.category==='카페')&&!multiCafe)continue;
   if(p.category==='산책'&&stops.some(s=>s.category==='산책'))continue;
   const walk=travel(last,p,prefs.transport);
+  if(prefs.transport==='도보'&&((prefs.maxLegMinutes!==undefined&&walk>prefs.maxLegMinutes)||(prefs.maxTravelMinutes!==undefined&&travelTotal+walk>prefs.maxTravelMinutes)))continue;
   let arrival=now+walk;
   if(p.category==='식사'){
    const meals=stops.filter(s=>s.category==='식사');
@@ -49,7 +50,7 @@ export function schedule(places:Place[],prefs:Preferences,title:string,subtitle:
   if(arrival+p.duration>deadline||total+p.cost>prefs.budget)continue;
   now=arrival;
   stops.push({...p,arrival:time(now),departure:time(now+p.duration),travel:walk,reason:`${p.category} 시간을 넣어 여유 있게 즐겨요.`});
-  now+=p.duration;total+=p.cost;last=p;used.add(p.id);
+  now+=p.duration;total+=p.cost;travelTotal+=walk;last=p;used.add(p.id);
  }
  return {id,title,subtitle,stops,total,minutes:now-begin,preferences:prefs};
 }
