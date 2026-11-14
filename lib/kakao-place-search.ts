@@ -10,7 +10,7 @@ export function convertKakaoDocument(d:KakaoDocument,category:string,center:{lat
  if(category==='식사'&&(d.category_group_code!=='FD6'||/아이스크림|식품판매|식료품|편의점|떡,한과|떡집|떡판매|술집|유흥주점|단란주점|호프,요리주점|바,칵테일|포장마차/.test(d.category_name)))return null;
  if(category==='카페'&&(d.category_group_code!=='CE7'||/유통|도매|납품|제조|물류|공급업/.test(d.place_name)))return null;
  if(category==='산책'&&(!/공원|산책|둘레길|수목원/.test(d.category_name)&&!/^(울산대공원|태화강국가정원)$/.test(d.place_name.replace(/\s/g,''))||/어린이공원|소공원|쌈지공원|놀이공원|놀이터|어린이놀이터|주차장|출입구|관리사무소|화장실|운동기구|체육시설/.test(d.place_name)))return null;
- if(category==='놀거리'&&!/볼링|방탈출|보드게임|오락|체험|백화점|복합쇼핑몰|쇼핑몰|쇼핑센터/.test(d.category_name))return null;
+ if(category==='놀거리'&&(!/볼링|방탈출|보드게임|오락|체험|백화점|복합쇼핑몰|쇼핑몰|쇼핑센터/.test(d.category_name)||/통신판매|인터넷|온라인/.test(d.category_name)))return null;
  return {id:`kakao/${d.id}`,name:d.place_name.trim(),lat,lng,category,...categories[category],indoor:category!=='산책',url:`https://place.map.kakao.com/${d.id}`,address:d.road_address_name||d.address_name,phone:d.phone||undefined,source:'kakao',sourceCategory:d.category_name,priceBasis:'category_estimate'};
 }
 async function request(search:Search,p:Preferences,key:string):Promise<Place[]>{

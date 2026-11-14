@@ -11,3 +11,11 @@ test('uses an exact Kakao detail page for review verification links',()=>{const 
 test('excludes bars from meal recommendations',()=>{assert.equal(convertKakaoDocument({...doc,category_name:'음식점 > 술집 > 호프,요리주점'},'식사',center),null);});
 
 test('filters small parks and park facilities from walking candidates',()=>{const park={...doc,category_name:'여행 > 공원',place_name:'삼산어린이공원'};assert.equal(convertKakaoDocument(park,'산책',center),null);assert.equal(convertKakaoDocument({...park,place_name:'울산대공원 주차장'},'산책',center),null);assert.ok(convertKakaoDocument({...park,place_name:'울산대공원'},'산책',center));});
+
+// 운영 화면에서 실제로 추천된 사례(상호·업종 문자열만 사용).
+test('rejects online shopping businesses as play venues, keeps real shopping malls',()=>{
+ const online={...doc,place_name:'원스탑몰',category_name:'가정,생활 > 통신판매 > 인터넷쇼핑몰',phone:'010-0000-0000'};
+ assert.equal(convertKakaoDocument(online,'놀거리',center),null);
+ assert.equal(convertKakaoDocument({...online,place_name:'일지인센스',phone:'02-732-2666'},'놀거리',center),null);
+ assert.ok(convertKakaoDocument({...doc,place_name:'시험 복합쇼핑몰',category_name:'쇼핑,유통 > 복합쇼핑몰'},'놀거리',center));
+});
