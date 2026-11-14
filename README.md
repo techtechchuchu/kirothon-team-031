@@ -1,7 +1,5 @@
 ## 일단나와 60초 소개 영상
 
-<video src="./demo/ildannawa-ad-60s.mp4" controls width="360"></video>
-
 [▶ 영상 바로 재생하기](./demo/ildannawa-ad-60s.mp4)
 
 # 일단나와 (ILDANNAWA)
