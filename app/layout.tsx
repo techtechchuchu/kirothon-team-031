@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import {AppThemeProvider} from "./theme-provider";
 
 export const metadata: Metadata = {
   title: "일단나와 · 오늘 어디 갈지, 일단 맡겨봐요",
@@ -16,8 +17,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ko">
-      <body className="antialiased">{children}</body>
+    <html lang="ko" suppressHydrationWarning>
+      <body className="antialiased"><AppThemeProvider>{children}</AppThemeProvider></body>
     </html>
   );
 }
