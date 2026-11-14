@@ -2,6 +2,20 @@ import {z} from 'zod';
 import {schedule,type Course,type Place,type Preferences} from './planner.ts';
 export const draftSchema=z.object({region:z.string().max(80).optional(),start:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),end:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),budget:z.number().int().min(1000).max(10000000).optional(),people:z.number().int().min(1).max(30).optional(),companion:z.string().max(30).optional(),transport:z.enum(['도보','대중교통','자동차']).optional(),activities:z.array(z.enum(['식사','카페','산책','문화','놀거리'])).max(5).optional(),indoor:z.boolean().optional(),shortWalk:z.boolean().optional(),dessert:z.boolean().optional(),noChain:z.boolean().optional(),request:z.string().max(1000).optional()});
 export type AgentDraft=z.infer<typeof draftSchema>;
+/** Keep valid conditions even when one model field is malformed. */
+export function mergeAgentDraft(previous:AgentDraft,patch:Record<string,unknown>,message:string){
+ const next:Record<string,unknown>={...previous};const invalid:string[]=[];
+ for(const [key,schema] of Object.entries(draftSchema.shape)){
+  let value=patch[key];if(value===null||value===undefined||key==='request')continue;
+  if((key==='start'||key==='end')&&typeof value==='string'){
+   value=value.trim();if(value==='24:00')value='00:00';
+   if(/^\d:\d{2}$/.test(value as string))value='0'+value;
+  }
+  const result=schema.safeParse(value);if(result.success)next[key]=result.data;else invalid.push(key);
+ }
+ next.request=[previous.request,message].filter(Boolean).join(' ').slice(-1000);
+ return {draft:draftSchema.parse(next),invalid};
+}
 export function missingConditions(d:AgentDraft){return [['region','지역'],['start','시작 시간'],['end','종료 시간'],['budget','1인 예산']].filter(([k])=>d[k as keyof AgentDraft]===undefined).map(([,label])=>label);}
 export function agentPreferences(d:AgentDraft,center:{lat:number;lng:number}):Preferences{
  if(missingConditions(d).length)throw new Error('조건이 부족해요');

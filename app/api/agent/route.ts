@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {draftSchema,missingConditions,agentPreferences,replaceAgentStop} from '../../../lib/day-agent';
+import {draftSchema,mergeAgentDraft,missingConditions,agentPreferences,replaceAgentStop} from '../../../lib/day-agent';
 import {searchKakaoPlaces} from '../../../lib/kakao-place-search';
 import {suitablePlace,estimateCost,isChainCafe} from '../../../lib/place-suitability';
 import {propose,ensureMeal,type Course} from '../../../lib/planner';
@@ -20,12 +20,12 @@ export async function POST(req:Request){
    if(!key||!kakao)throw new Error('대화 추천에 필요한 서버 연결이 준비되지 않았어요. 조건 입력으로 이용해 주세요.');
    status('말씀하신 조건과 이전 대화를 읽고 있어요');
    const now=new Date().toLocaleString('sv-SE',{timeZone:'Asia/Seoul'});
-   const response=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:AbortSignal.any([req.signal,AbortSignal.timeout(25000)]),headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-4.1-mini',messages:[{role:'system',content:`한국 여가 코스 에이전트의 요청 해석기. 현재 한국 시각 ${now}. 사용자 최신 발화에서 명시한 변경만 반환. 언급 안 한 필드는 null(기존 유지). 시작/끝 HH:mm. '지금'은 현재 시각. 9시까지는 문맥상 저녁이면21:00, 애매하면 question으로 확인하고 action clarify. 예산은 1인 원. 총예산이면 인원으로 나눠라; 인원 불명이면 질문. 이동 짧게/많이 걷기 싫어는 shortWalk true. 카페 하나 변경은 replace, category 카페. index는 명시된 순서의 0-based. 그 외 전체 일정 조건 변경은 plan. 정보 제공 후 조건 충분하면 plan. unsupported(예약, 실제 영업/메뉴/후기 검증 등)는 clarify로 한계를 짧게 설명. 추측한 장소명/가격을 생성하지 마. 분위기는 사용자의 원문으로 검색에 전달됨. 기존 조건 ${JSON.stringify(input.draft)}. 기존 코스 ${JSON.stringify(input.course?.stops.map((s,i)=>({index:i,name:s.name,category:s.category})))}`},...input.history,{role:'user',content:input.message}],response_format:{type:'json_schema',json_schema:{name:'day_request',strict:true,schema:{type:'object',properties,required:Object.keys(properties),additionalProperties:false}}}})});
+   const response=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:AbortSignal.any([req.signal,AbortSignal.timeout(25000)]),headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-4.1-mini',messages:[{role:'system',content:`한국 여가 코스 에이전트의 요청 해석기. 현재 한국 시각 ${now}. 사용자 최신 발화에서 명시한 변경만 반환. 언급 안 한 필드는 null(기존 유지). 시작/끝 HH:mm. 밤 12시와 자정은 00:00(다음 날), 24:00을 사용하지 마. 예산 미언급은 null. 연극은 문화로 분류. 술집/팝업의 실제 운영일·공연 시간은 확인할 수 없으므로 원문 요청을 기억하고 그 한계를 question에 설명하되 가능한 조건은 추출. '지금'은 현재 시각. 9시까지는 문맥상 저녁이면21:00, 애매하면 question으로 확인하고 action clarify. 예산은 1인 원. 총예산이면 인원으로 나눠라; 인원 불명이면 질문. 이동 짧게/많이 걷기 싫어는 shortWalk true. 카페 하나 변경은 replace, category 카페. index는 명시된 순서의 0-based. 그 외 전체 일정 조건 변경은 plan. 정보 제공 후 조건 충분하면 plan. unsupported(예약, 실제 영업/메뉴/후기 검증 등)는 clarify로 한계를 짧게 설명. 추측한 장소명/가격을 생성하지 마. 분위기는 사용자의 원문으로 검색에 전달됨. 기존 조건 ${JSON.stringify(input.draft)}. 기존 코스 ${JSON.stringify(input.course?.stops.map((s,i)=>({index:i,name:s.name,category:s.category})))}`},...input.history,{role:'user',content:input.message}],response_format:{type:'json_schema',json_schema:{name:'day_request',strict:true,schema:{type:'object',properties,required:Object.keys(properties),additionalProperties:false}}}})});
    if(!response.ok)throw new Error('AI 연결이 지연되고 있어요. 잠시 후 다시 보내 주세요.');
    const data=await response.json() as {choices?:{message?:{content?:string}}[]};const intent=JSON.parse(data.choices?.[0]?.message?.content||'{}');
-   const patch=Object.fromEntries(Object.entries(intent).filter(([k,v])=>k in draftSchema.shape&&v!==null));
-   const draft=draftSchema.parse({...input.draft,...patch,request:[input.draft.request,input.message].filter(Boolean).join(' ').slice(-1000)});
+   const {draft,invalid}=mergeAgentDraft(input.draft,intent,input.message);
    const done=(message:string,next:Course|null=input.course??null)=>send({type:'result',draft,course:next,message});
+   if(invalid.length){const labels:Record<string,string>={start:'시작 시간',end:'종료 시간',budget:'1인 예산',people:'인원',activities:'원하는 활동'};done('다른 조건은 기억했어요. '+invalid.map(k=>labels[k]||k).join(' · ')+'만 다시 알려주세요.');return;}
    if(intent.action==='clarify'){done(intent.question||'어떤 조건을 바꾸고 싶으세요?');return;}
    if(input.target!==null&&input.target!==undefined&&input.course)intent.action='replace';
    const missing=missingConditions(draft);if(missing.length){done(`${missing.join(' · ')}을 알려주세요. 예: 오늘 14시부터 21시까지, 1인 3만 원. 인원과 이동수단은 말씀 없으면 2명·도보로 계산해요.`);return;}

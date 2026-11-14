@@ -10,7 +10,7 @@ export default function AgentChat(){
  useEffect(()=>()=>abort.current?.abort(),[]);
  useEffect(()=>{bottom.current?.scrollIntoView({block:'nearest'});},[messages,stage]);
  async function send(){
-  if(busy||!text.trim())return;const content=text.trim();const previous=messages.slice(-10);setMessages(m=>[...m,{role:'user',content}]);setText('');setBusy(true);setError('');abort.current=new AbortController();
+  if(abort.current||busy||!text.trim())return;const content=text.trim();const previous=messages.slice(-10);setMessages(m=>m.at(-1)?.role==='user'&&m.at(-1)?.content===content?m:[...m,{role:'user',content}]);setText('');setBusy(true);setError('');abort.current=new AbortController();
   try{
    const r=await fetch('/api/agent',{method:'POST',headers:{'Content-Type':'application/json'},signal:abort.current.signal,body:JSON.stringify({message:content,draft,course,target,history:previous})});
    if(!r.ok||!r.body)throw new Error('요청을 보내지 못했어요. 다시 시도해 주세요.');
