@@ -17,5 +17,9 @@ test('rejects online shopping businesses as play venues, keeps real shopping mal
  const online={...doc,place_name:'원스탑몰',category_name:'가정,생활 > 통신판매 > 인터넷쇼핑몰',phone:'010-0000-0000'};
  assert.equal(convertKakaoDocument(online,'놀거리',center),null);
  assert.equal(convertKakaoDocument({...online,place_name:'일지인센스',phone:'02-732-2666'},'놀거리',center),null);
- assert.ok(convertKakaoDocument({...doc,place_name:'시험 복합쇼핑몰',category_name:'쇼핑,유통 > 복합쇼핑몰'},'놀거리',center));
+ // 운영 화면에서 나온 상가(고려쇼핑몰: 가정,생활 > 복합쇼핑몰)는 기본 후보에서 제외한다.
+ assert.equal(convertKakaoDocument({...doc,place_name:'고려쇼핑몰',category_name:'가정,생활 > 복합쇼핑몰'},'놀거리',center),null);
+ // 백화점·방탈출·볼링 같은 놀거리 업종은 그대로 통과한다.
+ assert.ok(convertKakaoDocument({...doc,place_name:'시험 방탈출',category_name:'가정,생활 > 여가시설 > 방탈출카페'},'놀거리',center));
+ assert.ok(convertKakaoDocument({...doc,place_name:'시험 백화점',category_name:'쇼핑,유통 > 백화점'},'놀거리',center));
 });
