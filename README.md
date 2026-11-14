@@ -102,6 +102,13 @@ node --experimental-strip-types scripts/preview-server.mjs
 
 ## 데이터와 지도
 
+지도는 `NEXT_PUBLIC_KAKAO_MAP_KEY`가 설정되면 카카오맵을 쓰고, 없거나 SDK 로드에 실패하면 OpenStreetMap을 씁니다.
+
+- 이 값은 카카오디벨로퍼스 앱의 **JavaScript 키**입니다. 장소 검색용 REST 키(`KAKAO_REST_API_KEY`)와 다릅니다. REST 키를 여기에 넣지 마세요.
+- JavaScript 키는 구조상 브라우저 코드에 포함됩니다. 카카오디벨로퍼스 → 앱 → 플랫폼 → Web에 사이트 도메인을 등록해 사용 범위를 제한하세요. 코드나 저장소에는 넣지 않고 배포 환경변수로만 설정합니다.
+- `NEXT_PUBLIC_` 값은 빌드할 때 들어가므로, 값을 바꾼 뒤에는 다시 배포해야 반영됩니다.
+- 카카오맵 지도 점선도 방문 순서일 뿐 길찾기 경로가 아닙니다.
+
 - © OpenStreetMap contributors · https://www.openstreetmap.org/copyright
 - 타일 정책: https://operations.osmfoundation.org/policies/tiles/
 - 지역 검색: Photon · https://github.com/komoot/photon
