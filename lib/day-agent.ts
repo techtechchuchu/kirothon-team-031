@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {schedule,type Course,type Place,type Preferences} from './planner.ts';
-export const draftSchema=z.object({region:z.string().max(80).optional(),start:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),end:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),budget:z.number().int().min(1000).max(10000000).optional(),people:z.number().int().min(1).max(30).optional(),companion:z.string().max(30).optional(),transport:z.enum(['도보','대중교통','자동차']).optional(),activities:z.array(z.enum(['식사','카페','산책','문화','놀거리'])).max(5).optional(),indoor:z.boolean().optional(),shortWalk:z.boolean().optional(),dessert:z.boolean().optional(),noChain:z.boolean().optional(),request:z.string().max(1000).optional()});
+export const draftSchema=z.object({region:z.string().max(80).optional(),start:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),end:z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),budget:z.number().int().min(1000).max(10000000).optional(),people:z.number().int().min(1).max(30).optional(),companion:z.string().max(30).optional(),transport:z.enum(['도보','대중교통','자동차']).optional(),activities:z.array(z.enum(['식사','카페','산책','문화','놀거리'])).max(5).optional(),indoor:z.boolean().optional(),shortWalk:z.boolean().optional(),drinks:z.boolean().optional(),dessert:z.boolean().optional(),noChain:z.boolean().optional(),request:z.string().max(1000).optional()});
 export type AgentDraft=z.infer<typeof draftSchema>;
 /** Keep valid conditions even when one model field is malformed. */
 export function mergeAgentDraft(previous:AgentDraft,patch:Record<string,unknown>,message:string){
@@ -31,3 +31,5 @@ export function replaceAgentStop(course:Course,index:number,candidates:Place[],p
  }
  return null;
 }
+
+export function agentCourseReady(c:Course,p:Preferences){return c.stops.length>=2&&new Set(c.stops.map(s=>s.id)).size===c.stops.length&&c.total<=p.budget&&p.activities.every(category=>c.stops.some(s=>s.category===category));}

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mergeAgentDraft,agentPreferences,missingConditions,replaceAgentStop,draftSchema} from '../lib/day-agent.ts';
+import {agentCourseReady,mergeAgentDraft,agentPreferences,missingConditions,replaceAgentStop,draftSchema} from '../lib/day-agent.ts';
 import {schedule,type Place} from '../lib/planner.ts';
 const draft={region:'서울 성수동',start:'14:00',end:'18:00',budget:30000};
 const p=agentPreferences(draft,{lat:37.54,lng:127.05});
@@ -14,3 +14,5 @@ test('replacement cannot drop another stop to fit deadline',()=>{const c=schedul
 
 test('midnight normalizes and missing budget stays missing',()=>{const {draft,invalid}=mergeAgentDraft({}, {region:'서울 혜화동',start:'11:00',end:'24:00',budget:null},'밤 12시까지');assert.equal(draft.end,'00:00');assert.deepEqual(invalid,[]);assert.deepEqual(missingConditions(draft),['1인 예산']);});
 test('bad field does not discard valid region and time',()=>{const {draft,invalid}=mergeAgentDraft({}, {region:'혜화동',start:'11:00',end:'00:00',budget:0},'요청');assert.equal(draft.region,'혜화동');assert.equal(draft.start,'11:00');assert.deepEqual(invalid,['budget']);});
+
+test('one venue and missing requested activity are not a complete course',()=>{const one=schedule([play],p,'test','','c');assert.equal(agentCourseReady(one,p),false);const two=schedule([cafe,play],p,'test','','c');assert.equal(agentCourseReady(two,{...p,activities:['식사','카페']}),false);assert.equal(agentCourseReady(two,{...p,activities:['카페','놀거리']}),true);});
