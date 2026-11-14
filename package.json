@@ -13,7 +13,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test --test-isolation=none tests/planner.test.ts tests/place-search.test.ts tests/kakao-place-search.test.ts"
+    "test": "node --experimental-strip-types --test --test-isolation=none tests/planner.test.ts tests/place-search.test.ts tests/kakao-place-search.test.ts tests/place-suitability.test.ts tests/place-refine.test.ts tests/meal-timing.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
