@@ -10,7 +10,7 @@ export function convertKakaoDocument(d:KakaoDocument,category:string,center:{lat
  if(category==='식사'&&(d.category_group_code!=='FD6'||/아이스크림|식품판매|식료품|편의점|떡,한과|떡집|떡판매|술집|유흥주점|단란주점|호프,요리주점|바,칵테일|포장마차/.test(d.category_name)))return null;
  if(category==='카페'&&(d.category_group_code!=='CE7'||/유통|도매|납품|제조|물류|공급업/.test(d.place_name)))return null;
  if(category==='산책'&&(!/공원|산책|둘레길|수목원/.test(d.category_name)&&!/^(울산대공원|태화강국가정원)$/.test(d.place_name.replace(/\s/g,''))||/어린이공원|소공원|쌈지공원|놀이공원|놀이터|어린이놀이터|주차장|출입구|관리사무소|화장실|운동기구|체육시설/.test(d.place_name)))return null;
- if(category==='놀거리'&&(!/볼링|방탈출|보드게임|오락|체험|백화점|복합쇼핑몰|쇼핑몰|쇼핑센터/.test(d.category_name)||/통신판매|인터넷|온라인/.test(d.category_name)))return null;
+ if(category==='놀거리'&&(!/볼링|방탈출|보드게임|오락|체험|백화점/.test(d.category_name)||/통신판매|인터넷|온라인/.test(d.category_name)))return null;
  return {id:`kakao/${d.id}`,name:d.place_name.trim(),lat,lng,category,...categories[category],indoor:category!=='산책',url:`https://place.map.kakao.com/${d.id}`,address:d.road_address_name||d.address_name,phone:d.phone||undefined,source:'kakao',sourceCategory:d.category_name,priceBasis:'category_estimate'};
 }
 async function request(search:Search,p:Preferences,key:string):Promise<Place[]>{
@@ -28,7 +28,7 @@ export async function searchKakaoPlaces(p:Preferences,key:string):Promise<Place[
  for(const [offsetLat,offsetLng] of [[0.006,0],[-0.006,0],[0,0.007],[0,-0.007]]){if(selected.includes('식사'))searches.push({category:'식사',group:'FD6',offsetLat,offsetLng,...(p.food&&p.food!=='상관없어요'?{query:p.food}:{})});if(selected.includes('카페'))searches.push({category:'카페',group:'CE7',offsetLat,offsetLng});}
  if(selected.includes('산책')){for(const page of [1,2,3])searches.push({category:'산책',query:'공원',sort:'accuracy',page});if(/울산/.test(p.region))for(const query of ['울산대공원','태화강국가정원'])searches.push({category:'산책',query,sort:'accuracy'});}
  if(selected.includes('문화')){searches.push({category:'문화',group:'CT1'});if(/영화|극장/.test(p.request))searches.push({category:'문화',query:'영화관'});}
- if(selected.includes('놀거리'))for(const query of ['볼링장','방탈출','보드게임','백화점','복합쇼핑몰','쇼핑몰','업스퀘어'])searches.push({category:'놀거리',query});
+ if(selected.includes('놀거리'))for(const query of ['볼링장','방탈출','보드게임','백화점'])searches.push({category:'놀거리',query});
  const wantsUnmanned=/무인(?:카페)?\s*(?:추천|찾|원|가고|좋)/.test(p.request);
  const cacheKey=JSON.stringify([wantsUnmanned,p.lat.toFixed(3),p.lng.toFixed(3),selected,p.food,p.region,/예카|예쁜|감성|분위기|인테리어/.test(p.request),/영화|극장/.test(p.request)]);const hit=cache.get(cacheKey);if(hit&&hit.until>Date.now())return hit.places;if(inflight.has(cacheKey))return inflight.get(cacheKey)!;
  const task=(async()=>{const results=await Promise.allSettled(searches.map(s=>request(s,p,key)));const found=new Map<string,Place>();for(const r of results)if(r.status==='fulfilled')for(const place of r.value)found.set(place.id,place);

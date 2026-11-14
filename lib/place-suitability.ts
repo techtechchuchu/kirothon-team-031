@@ -1,4 +1,5 @@
 import type {Place,Preferences} from './planner.ts';
+import {withCurated} from './curated-places.ts';
 
 export const chainCafe=/스타벅스|컴포즈|메가커피|메가MGC|메가엠지씨|빽다방|이디야|투썸플레이스|할리스|더벤티|매머드|요거프레소|커피빈|엔제리너스|폴바셋|파스쿠찌|커피베이/i;
 export const fastFood=/패스트푸드|맥도날드|버거킹|롯데리아|맘스터치|KFC|서브웨이|파파이스|노브랜드버거|프랭크버거/i;
@@ -17,6 +18,8 @@ export function suitablePlace(place:Place,prefs:Preferences):boolean{
  const all=text+' '+(place.address||'');
  // 온라인 판매·통신판매 사업자는 방문할 수 있는 매장이 아니다. 상호에 '몰'이 있어도 제외한다.
  if(/통신판매|인터넷\s*쇼핑몰|온라인/.test(place.sourceCategory||''))return false;
+ // 상가·복합쇼핑몰은 카카오 업종만으로 방문할 만한 곳인지 알 수 없다. 팀이 확인한 장소(verified)만 허용한다.
+ if(place.category==='놀거리'&&!place.verified&&/쇼핑몰|쇼핑센터/.test(text))return false;
  if(/배달\s*전문|포장\s*전문|배달[·및\s]*포장|유흥주점|단란주점|룸싸롱|노래주점|성인주점/.test(text))return false;
  if(place.category==='식사'){
   if(/술집|호프,요리주점|바,칵테일|포장마차/.test(place.sourceCategory||''))return false;
@@ -43,7 +46,7 @@ export function estimateCost(place:Place):number{
  * - 예산이 적을 때 고가 업종 제외
  */
 export function refineCandidates(candidates:Place[],prefs:Preferences):Place[]{
- const priced=candidates.map(place=>place.category==='식사'?{...place,cost:estimateCost(place)}:place).filter(place=>suitablePlace(place,prefs));
+ const priced=withCurated(candidates,prefs).map(place=>place.category==='식사'?{...place,cost:estimateCost(place)}:place).filter(place=>suitablePlace(place,prefs));
  const independentCafes=priced.filter(place=>place.category==='카페'&&!isChainCafe(place)).length;
  const regularMeals=priced.filter(place=>place.category==='식사'&&!isFastFood(place)).length;
  const dropChains=!wantsChain(prefs.request)&&independentCafes>=ENOUGH_ALTERNATIVES;
