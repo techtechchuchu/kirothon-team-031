@@ -149,3 +149,8 @@ input,select,textarea{color:var(--ink);caret-color:var(--purple);color-scheme:in
 .chat-input input{background:var(--surface);color:var(--ink)}
 .nawa-shadow{background:color-mix(in srgb,var(--purple) 18%,transparent)}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--paper:#121214;--surface:#1F1F23;--surface-soft:#29242f;--surface-strong:#36313f;--ink:#F4F4F5;--muted:#bcb4c8;--line:#494150;--purple:#be94ff;--on-accent:#21112f;--scrim:#121214e6;--danger:#ffb4a5;color-scheme:dark}}
+
+/* Keep native dialogs centered after Tailwind's margin reset. */
+.app-dialog{margin:auto;max-height:calc(100dvh - 32px);overflow:auto}
+.site-header nav button{white-space:nowrap}
+@media(max-width:650px){.site-header nav button{font-size:10px;gap:4px;padding:0 3px}.site-header nav button svg{width:16px;flex:none}}
