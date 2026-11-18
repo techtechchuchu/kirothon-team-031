@@ -5,6 +5,7 @@ import type {Course,Stop} from '../lib/planner';
 import {distance} from '../lib/planner';
 import {ROUTE_LABEL,joinPath,legMinutes,slicePath,type LatLng,type RoutePlan} from '../lib/route-plan';
 import type {MapMesh} from '../lib/buildings';
+import {useLang,useT} from './i18n-provider';
 import 'leaflet/dist/leaflet.css';
 
 // 카카오맵 JavaScript 키. 브라우저에 노출되는 키이므로 카카오디벨로퍼스에서 사이트 도메인을 등록해 사용을 제한한다.
@@ -69,26 +70,26 @@ type Handlers={onPin:(i:number)=>void;onBlank:()=>void};
 
 function pinElement(n:number,name:string){
  const wrap=document.createElement('div');wrap.className='number-marker kakao-pin';wrap.title=name;
- wrap.setAttribute('role','button');wrap.setAttribute('aria-label',`${n}번 ${name}`);
+ wrap.setAttribute('role','button');wrap.setAttribute('aria-label',`${n}. ${name}`);
  const span=document.createElement('span');span.textContent=String(n);wrap.appendChild(span);
  return wrap;
 }
 /** 코스가 있으면 '출발' 표시, 없으면(조건 입력 화면 미리보기) 지역 중심 표시. */
-function originElement(hasStops:boolean){
+function originElement(hasStops:boolean,label:string){
  const d=document.createElement('div');
- if(hasStops){d.className='origin-marker';d.textContent='출발';}else{d.className='center-marker';d.appendChild(document.createElement('span'));}
+ if(hasStops){d.className='origin-marker';d.textContent=label;}else{d.className='center-marker';d.appendChild(document.createElement('span'));}
  return d;
 }
 function headElement(){const img=document.createElement('img');img.src='/nawa-loading.png';img.alt='';img.className='route-head';return img;}
 function arrowElement(deg:number){const d=document.createElement('div');d.className='route-arrow';d.style.transform=`rotate(${deg}deg)`;d.textContent='›';return d;}
 
-function kakaoAdapter(k:Kakao,el:HTMLDivElement,origin:LatLng,stops:Stop[],h:Handlers):Adapter{
+function kakaoAdapter(k:Kakao,el:HTMLDivElement,origin:LatLng,stops:Stop[],h:Handlers,startLabel:string):Adapter{
  const {maps}=k;const ll=(p:LatLng)=>new maps.LatLng(p[0],p[1]);
  const map=new maps.Map(el,{center:ll(origin),level:4,scrollwheel:false});
  map.addControl(new maps.ZoomControl(),maps.ControlPosition.RIGHT);
  maps.event.addListener(map,'click',h.onBlank);
  const pins:HTMLElement[]=[];
- new maps.CustomOverlay({map,position:ll(origin),content:originElement(stops.length>0),yAnchor:.5,xAnchor:.5,zIndex:1});
+ new maps.CustomOverlay({map,position:ll(origin),content:originElement(stops.length>0,startLabel),yAnchor:.5,xAnchor:.5,zIndex:1});
  const bounds=new maps.LatLngBounds();bounds.extend(ll(origin));
  stops.forEach((s,i)=>{
   const pin=pinElement(i+1,s.name);pin.addEventListener('click',e=>{e.stopPropagation();h.onPin(i);});pins.push(pin);
@@ -116,12 +117,12 @@ function kakaoAdapter(k:Kakao,el:HTMLDivElement,origin:LatLng,stops:Stop[],h:Han
  };
 }
 
-async function leafletAdapter(el:HTMLDivElement,origin:LatLng,stops:Stop[],h:Handlers,onTileError:()=>void):Promise<Adapter>{
+async function leafletAdapter(el:HTMLDivElement,origin:LatLng,stops:Stop[],h:Handlers,onTileError:()=>void,startLabel:string):Promise<Adapter>{
  const L=await import('leaflet');
  const map=L.map(el,{scrollWheelZoom:false}).setView(origin,15);
  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxZoom:19}).on('tileerror',onTileError).addTo(map);
  map.on('click',h.onBlank);
- L.marker(origin,{icon:L.divIcon({className:'',html:originElement(stops.length>0),iconSize:stops.length?[40,22]:[24,24],iconAnchor:stops.length?[20,11]:[12,12]}),interactive:false}).addTo(map);
+ L.marker(origin,{icon:L.divIcon({className:'',html:originElement(stops.length>0,startLabel),iconSize:stops.length?[40,22]:[24,24],iconAnchor:stops.length?[20,11]:[12,12]}),interactive:false}).addTo(map);
  const pins:HTMLElement[]=[];
  stops.forEach((s,i)=>{
   const pin=pinElement(i+1,s.name);pins.push(pin);
@@ -145,12 +146,12 @@ async function leafletAdapter(el:HTMLDivElement,origin:LatLng,stops:Stop[],h:Han
 /** 화면 기준 진행 방향(도). 경도 차이는 위도에 따라 줄여서 계산한다. */
 function bearing(a:LatLng,b:LatLng){return Math.atan2(-(b[0]-a[0]),(b[1]-a[1])*Math.cos(a[0]*Math.PI/180))*180/Math.PI;}
 
-function stopInfo(s:Stop,i:number,leg:{minutes:number|null;source:string}|null,transport:string){
+function stopInfo(s:Stop,i:number,leg:{minutes:number|null;source:string}|null,transport:string,tr:(text:string,vars?:Record<string,string|number>)=>string){
  const box=document.createElement('div');box.className='pin-info-card';
- const title=document.createElement('b');title.textContent=`${i+1}. ${s.name}`;
- const time=document.createElement('span');time.textContent=`${s.arrival}~${s.departure} · ${s.category} ${s.duration}분`;
+ const title=document.createElement('b');title.textContent=`${i+1}. ${tr(s.name)}`;
+ const time=document.createElement('span');time.textContent=`${s.arrival}~${s.departure} · ${tr(s.category)} ${tr('{n}분',{n:s.duration})}`;
  const move=document.createElement('small');
- move.textContent=leg&&leg.minutes!==null?`이전 지점에서 ${transport} ${leg.minutes}분 (${leg.source})`:`이전 지점에서 약 ${s.travel}분 (직선거리 추정)`;
+ move.textContent=leg&&leg.minutes!==null?tr('이전 지점에서 {transport} {n}분 ({source})',{transport:tr(transport),n:leg.minutes,source:tr(leg.source)}):tr('이전 지점에서 약 {n}분 (직선거리 추정)',{n:s.travel});
  box.appendChild(title);box.appendChild(time);box.appendChild(move);
  return box;
 }
@@ -171,6 +172,7 @@ function MapCanvas({lat,lng,course}:{lat:number;lng:number;course?:Course}){
  const [buildings,setBuildings]=useState<string|null>(null);
  const frame=useRef<HTMLIFrameElement>(null);
  const {resolvedTheme}=useTheme();
+ const tr=useT(),lang=useLang();
  const mobile=useMedia('(max-width:650px)');
  const reduced=useMedia('(prefers-reduced-motion: reduce)');
  const stops=course?.stops||[];
@@ -183,8 +185,8 @@ function MapCanvas({lat,lng,course}:{lat:number;lng:number;course?:Course}){
   const el=ref.current;if(!el)return;let cancelled=false;
   // 가까운 마커를 누르면 한 단계 확대해 고를 수 있게 한다. 좌표는 옮기지 않는다.
  const h:Handlers={onPin:i=>{adapter.current?.focus(i,crowded(i));setSelected(i);},onBlank:()=>setSelected(null)};
-  const osm=()=>leafletAdapter(el,origin,stops,h,()=>setFailed(true)).then(a=>{if(cancelled){a.destroy();return;}adapter.current=a;setProvider('osm');setReady(n=>n+1);}).catch(()=>setFailed(true));
-  if(KAKAO_JS_KEY)loadKakao().then(k=>{if(cancelled)return;adapter.current=kakaoAdapter(k,el,origin,stops,h);setProvider('kakao');setReady(n=>n+1);}).catch(()=>{if(!cancelled)osm();});
+  const osm=()=>leafletAdapter(el,origin,stops,h,()=>setFailed(true),tr('출발')).then(a=>{if(cancelled){a.destroy();return;}adapter.current=a;setProvider('osm');setReady(n=>n+1);}).catch(()=>setFailed(true));
+  if(KAKAO_JS_KEY)loadKakao().then(k=>{if(cancelled)return;adapter.current=kakaoAdapter(k,el,origin,stops,h,tr('출발'));setProvider('kakao');setReady(n=>n+1);}).catch(()=>{if(!cancelled)osm();});
   else osm();
   return()=>{cancelled=true;adapter.current?.destroy();adapter.current=null;};
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -227,14 +229,14 @@ function MapCanvas({lat,lng,course}:{lat:number;lng:number;course?:Course}){
   a.markSelected(selected);
   if(selected===null||mobile||!stops[selected]){a.showInfo(null,null);return;}
   const leg=plan?.legs[selected];
-  a.showInfo(selected,stopInfo(stops[selected],selected,leg&&leg.source!=='straight'?{minutes:legMinutes(leg),source:ROUTE_LABEL[leg.source]}:null,transport));
+  a.showInfo(selected,stopInfo(stops[selected],selected,leg&&leg.source!=='straight'?{minutes:legMinutes(leg),source:ROUTE_LABEL[leg.source]}:null,transport,tr));
   // eslint-disable-next-line react-hooks/exhaustive-deps
  },[selected,mobile,ready,route]);
 
  // 3D 코스 지도: 코스·선택 상태를 Unity 화면(iframe)으로 보내고, 핀 클릭을 받는다.
  const dark=resolvedTheme==='dark';
  const scene=opened3d&&plan&&stops.length?scene3d(origin,stops,joinPath(plan.legs)):null;
- const payload3d=scene&&plan?JSON.stringify({ox:scene.xz(origin)[0],oz:scene.xz(origin)[1],stops:stops.map(s=>{const [x,z]=scene.xz([s.lat,s.lng]);return {name:s.name.replace(/s+/g,' ').slice(0,40),x,z};}),path:scene.thin.flatMap(p=>scene.xz(p)),verified:plan.verified,animate:!reduced,dark}):null;
+ const payload3d=scene&&plan?JSON.stringify({ox:scene.xz(origin)[0],oz:scene.xz(origin)[1],stops:stops.map(s=>{const [x,z]=scene.xz([s.lat,s.lng]);return {name:tr(s.name).replace(/\s+/g,' ').slice(0,40),x,z};}),path:scene.thin.flatMap(p=>scene.xz(p)),verified:plan.verified,animate:!reduced,dark}):null;
  const post3d=(message:Record<string,unknown>)=>frame.current?.contentWindow?.postMessage(message,window.location.origin);
  useEffect(()=>{
   if(!payload3d)return;
@@ -266,22 +268,22 @@ function MapCanvas({lat,lng,course}:{lat:number;lng:number;course?:Course}){
  },[opened3d,routeKey]);
 
  const totalMinutes=plan?.verified?plan.legs.reduce((sum,l)=>sum+(legMinutes(l)||0),0):null;
- const status=!stops.length?null:!plan?'경로 확인 중…':plan.verified?`${ROUTE_LABEL[plan.legs[0].source]} · 이동 합계 ${totalMinutes}분`:ROUTE_LABEL.straight;
+ const status=!stops.length?null:!plan?tr('경로 확인 중…'):plan.verified?`${tr(ROUTE_LABEL[plan.legs[0].source])} · ${tr('이동 합계 {n}분',{n:totalMinutes??0})}`:tr(ROUTE_LABEL.straight);
  const sel=selected!==null?stops[selected]:null;
  const selLeg=selected!==null?plan?.legs[selected]:undefined;
  const fallbackUrl=provider==='kakao'?`https://map.kakao.com/link/map/${lat},${lng}`:`https://www.openstreetmap.org/#map=15/${lat}/${lng}`;
  return <div className="map-container">
   <div className="map-stage">
-   <div ref={ref} className="leaflet-host" aria-label={provider==='kakao'?'카카오맵 지도':'OpenStreetMap 지도'}/>
-   {opened3d&&<iframe ref={frame} className="map-3d" src={UNITY_URL} title="3D 코스 지도" hidden={!view3d}/>}
-   {!!stops.length&&plan&&<button type="button" className={'map-3d-toggle'+(view3d?' on':'')} aria-pressed={view3d} onClick={()=>{setOpened3d(true);setView3d(v=>!v);}}>{view3d?'지도로 보기':'3D로 보기'}</button>}
+   <div ref={ref} className="leaflet-host" aria-label={tr(provider==='kakao'?'카카오맵 지도':'OpenStreetMap 지도')}/>
+   {opened3d&&<iframe ref={frame} className="map-3d" src={UNITY_URL+'?lang='+lang} title={tr('3D 코스 지도')} hidden={!view3d}/>}
+   {!!stops.length&&plan&&<button type="button" className={'map-3d-toggle'+(view3d?' on':'')} aria-pressed={view3d} onClick={()=>{setOpened3d(true);setView3d(v=>!v);}}>{tr(view3d?'지도로 보기':'3D로 보기')}</button>}
   </div>
-  {status&&<div className={'route-status '+(plan?.verified?'verified':'estimate')} role="status">{previewing&&!view3d&&<b>코스 미리보기</b>}{status}</div>}
-  {!!stops.length&&plan&&!reduced&&(view3d||!previewing)&&<button type="button" className="route-replay" onClick={()=>view3d?post3d({type:'nawa-replay'}):setReplay(n=>n+1)}>▶ 다시 보기</button>}
-  {failed&&!view3d&&<a className="map-fallback" href={fallbackUrl} target="_blank" rel="noreferrer">지도 연결 지연 · 새 창에서 보기 ↗</a>}
-  {!!stops.length&&<div className="stop-picker" aria-label="장소 선택">{stops.map((s,i)=><button type="button" key={s.id} className={selected===i?'active':''} aria-pressed={selected===i} onClick={()=>{setSelected(i);if(!view3d)adapter.current?.focus(i,crowded(i));}}>{i+1}</button>)}</div>}
-  {(mobile||view3d)&&sel&&<div className="stop-sheet" role="dialog" aria-label={`${selected!+1}번 장소 정보`}><button type="button" className="stop-sheet-close" aria-label="닫기" onClick={()=>setSelected(null)}>×</button><b>{selected!+1}. {sel.name}</b><span>{sel.arrival}~{sel.departure} · {sel.category} {sel.duration}분</span><small>{selLeg&&selLeg.source!=='straight'?`이전 지점에서 ${transport} ${legMinutes(selLeg)}분 (${ROUTE_LABEL[selLeg.source]})`:`이전 지점에서 약 ${sel.travel}분 (직선거리 추정)`}</small></div>}
+  {status&&<div className={'route-status '+(plan?.verified?'verified':'estimate')} role="status">{previewing&&!view3d&&<b>{tr('코스 미리보기')}</b>}{status}</div>}
+  {!!stops.length&&plan&&!reduced&&(view3d||!previewing)&&<button type="button" className="route-replay" onClick={()=>view3d?post3d({type:'nawa-replay'}):setReplay(n=>n+1)}>{tr('▶ 다시 보기')}</button>}
+  {failed&&!view3d&&<a className="map-fallback" href={fallbackUrl} target="_blank" rel="noreferrer">{tr('지도 연결 지연 · 새 창에서 보기 ↗')}</a>}
+  {!!stops.length&&<div className="stop-picker" aria-label={tr('장소 선택')} data-label={tr('장소 선택')}>{stops.map((s,i)=><button type="button" key={s.id} className={selected===i?'active':''} aria-pressed={selected===i} onClick={()=>{setSelected(i);if(!view3d)adapter.current?.focus(i,crowded(i));}}>{i+1}</button>)}</div>}
+  {(mobile||view3d)&&sel&&<div className="stop-sheet" role="dialog" aria-label={tr('{n}번 장소 정보',{n:selected!+1})}><button type="button" className="stop-sheet-close" aria-label={tr('닫기')} onClick={()=>setSelected(null)}>×</button><b>{selected!+1}. {tr(sel.name)}</b><span>{sel.arrival}~{sel.departure} · {tr(sel.category)} {tr('{n}분',{n:sel.duration})}</span><small>{selLeg&&selLeg.source!=='straight'?tr('이전 지점에서 {transport} {n}분 ({source})',{transport:tr(transport),n:legMinutes(selLeg)??0,source:tr(ROUTE_LABEL[selLeg.source])}):tr('이전 지점에서 약 {n}분 (직선거리 추정)',{n:sel.travel})}</small></div>}
  </div>;
 }
 
-export default function MapPanel(props:{lat:number;lng:number;course?:Course}){const {resolvedTheme}=useTheme();const [revealed,setRevealed]=useState(false);const [mounted,setMounted]=useState(false);useEffect(()=>setMounted(true),[]);useEffect(()=>setRevealed(false),[resolvedTheme]);if(!mounted)return <div className="map-theme-placeholder"/>;if(resolvedTheme==='dark'&&!revealed)return <div className="map-theme-placeholder"><b>코스 지도</b><p>지도는 원래의 밝은 색상으로 열려요.<br/>장소명과 마커를 선명하게 확인해 보세요.</p><button className="chip" onClick={()=>setRevealed(true)}>지도 펼치기</button></div>;return <div className="themed-map"><MapCanvas {...props}/>{resolvedTheme==='dark'&&<button className="map-hide chip" onClick={()=>setRevealed(false)}>지도 접기</button>}</div>;}
+export default function MapPanel(props:{lat:number;lng:number;course?:Course}){const tr=useT();const {resolvedTheme}=useTheme();const [revealed,setRevealed]=useState(false);const [mounted,setMounted]=useState(false);useEffect(()=>setMounted(true),[]);useEffect(()=>setRevealed(false),[resolvedTheme]);if(!mounted)return <div className="map-theme-placeholder"/>;if(resolvedTheme==='dark'&&!revealed)return <div className="map-theme-placeholder"><b>{tr('코스 지도')}</b><p>{tr('지도는 원래의 밝은 색상으로 열려요.')}<br/>{tr('장소명과 마커를 선명하게 확인해 보세요.')}</p><button className="chip" onClick={()=>setRevealed(true)}>{tr('지도 펼치기')}</button></div>;return <div className="themed-map"><MapCanvas {...props}/>{resolvedTheme==='dark'&&<button className="map-hide chip" onClick={()=>setRevealed(false)}>{tr('지도 접기')}</button>}</div>;}

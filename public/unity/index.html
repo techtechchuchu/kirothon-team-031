@@ -36,22 +36,39 @@
   <body>
     <canvas id="unity-canvas" tabindex="-1"></canvas>
     <div id="labels" aria-hidden="true"></div>
-    <div id="zoom"><button type="button" id="zin" aria-label="확대">+</button><button type="button" id="zout" aria-label="축소">−</button></div>
-    <div id="credit">지도 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> 기여자 · <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> · <a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · 건물 높이는 추정값</div>
+    <div id="zoom"><button type="button" id="zin">+</button><button type="button" id="zout">−</button></div>
+    <div id="credit"><span id="credit-map"></span> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> · <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> · <a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · <span id="credit-note"></span></div>
     <div id="loading">
       <img src="/nawa-loading.png" alt="" />
-      <div>3D 코스 지도를 불러오는 중…</div>
+      <div id="loading-text"></div>
       <div id="bar"><div id="fill"></div></div>
     </div>
     <script src="Build/WebGL.loader.js"></script>
     <script>
+      // ---- 화면 언어: 부모 페이지가 주소의 ?lang= 으로 알려준다 ----
+      var TEXT = {
+        ko: { loading: '3D 코스 지도를 불러오는 중…', origin: '출발', zin: '확대', zout: '축소', map: '지도', note: '건물 높이는 추정값', fail: '3D 화면을 불러오지 못했어요. 지도로 보기를 눌러 주세요.' },
+        en: { loading: 'Loading the 3D map…', origin: 'Start', zin: 'Zoom in', zout: 'Zoom out', map: 'Map', note: 'building heights are estimates', fail: "Couldn't load the 3D view. Please switch back to the map." },
+        zh: { loading: '正在加载 3D 路线地图…', origin: '出发', zin: '放大', zout: '缩小', map: '地图', note: '建筑高度为估算值', fail: '无法加载 3D 画面，请切换回地图查看。' },
+        ja: { loading: '3Dコースマップを読み込んでいます…', origin: '出発', zin: '拡大', zout: '縮小', map: '地図', note: '建物の高さは推定値', fail: '3D画面を読み込めませんでした。地図表示に切り替えてください。' },
+        vi: { loading: 'Đang tải bản đồ 3D…', origin: 'Xuất phát', zin: 'Phóng to', zout: 'Thu nhỏ', map: 'Bản đồ', note: 'chiều cao tòa nhà là ước tính', fail: 'Không tải được màn hình 3D. Vui lòng chuyển về bản đồ.' }
+      };
+      var lang = new URLSearchParams(window.location.search).get('lang');
+      var T = TEXT[lang] || TEXT.ko;
+      document.documentElement.lang = TEXT[lang] ? (lang === 'zh' ? 'zh-Hans' : lang) : 'ko';
+      document.getElementById('loading-text').textContent = T.loading;
+      document.getElementById('zin').setAttribute('aria-label', T.zin);
+      document.getElementById('zout').setAttribute('aria-label', T.zout);
+      document.getElementById('credit-map').textContent = T.map;
+      document.getElementById('credit-note').textContent = T.note;
+
       // ---- 글자 그리기 ----
       var layer = document.getElementById('labels');
       var names = []; // 부모 페이지가 보낸 장소명
       var pool = {};
       function labelText(kind, key) {
         if (kind === 'num') return String(+key + 1);
-        if (kind === 'origin') return '출발';
+        if (kind === 'origin') return T.origin;
         return names[+key] || '';
       }
       window.nawaLabels = function (lines) {
@@ -135,7 +152,7 @@
           if (pending.select !== null) u.SendMessage('Course', 'Select', String(pending.select));
         })
         .catch(function (err) {
-          document.getElementById('loading').textContent = '3D 화면을 불러오지 못했어요. 지도로 보기를 눌러 주세요.';
+          document.getElementById('loading').textContent = T.fail;
           console.error(err);
         });
     </script>
