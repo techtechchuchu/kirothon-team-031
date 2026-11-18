@@ -4,6 +4,7 @@ import {useTheme} from 'next-themes';
 import type {Course,Stop} from '../lib/planner';
 import {distance} from '../lib/planner';
 import {ROUTE_LABEL,joinPath,legMinutes,slicePath,type LatLng,type RoutePlan} from '../lib/route-plan';
+import type {MapMesh} from '../lib/buildings';
 import 'leaflet/dist/leaflet.css';
 
 // 카카오맵 JavaScript 키. 브라우저에 노출되는 키이므로 카카오디벨로퍼스에서 사이트 도메인을 등록해 사용을 제한한다.
@@ -12,6 +13,24 @@ const KAKAO_JS_KEY=process.env.NEXT_PUBLIC_KAKAO_MAP_KEY||'';
 export const mapProvider=KAKAO_JS_KEY?'카카오맵':'OpenStreetMap';
 const CROWDED_METERS=80;
 const PREVIEW_MS=2400;
+// 3D 코스 지도(Unity WebGL 빌드, public/unity). 용량이 커서 '3D로 보기'를 눌렀을 때만 불러온다.
+const UNITY_URL='/unity/index.html';
+const MAX_3D_PATH=1200;
+
+/** 3D 지도용 좌표: 코스 중심에서 동쪽(x)·북쪽(z)으로 떨어진 미터. */
+function scene3d(origin:LatLng,stops:Stop[],path:LatLng[]){
+ const all:LatLng[]=[origin,...stops.map(s=>[s.lat,s.lng] as LatLng),...path];
+ const lats=all.map(p=>p[0]),lngs=all.map(p=>p[1]);
+ const lat0=(Math.min(...lats)+Math.max(...lats))/2,lng0=(Math.min(...lngs)+Math.max(...lngs))/2;
+ const mx=Math.cos(lat0*Math.PI/180)*111320,mz=110574;
+ const xz=(p:LatLng):[number,number]=>[Math.round((p[1]-lng0)*mx*10)/10,Math.round((p[0]-lat0)*mz*10)/10];
+ const step=Math.max(1,Math.ceil(path.length/MAX_3D_PATH));
+ const thin=path.filter((_,i)=>i%step===0||i===path.length-1);
+ // 원판 반지름은 Unity(CourseScene.Rebuild)와 같은 식으로 계산한다
+ const far=Math.max(90,...all.map(p=>Math.hypot(...xz(p))));
+ const radius=far+Math.min(70,Math.max(7,far*.085))*4.5;
+ return {center:{lat:lat0,lng:lng0},radius,xz,thin};
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Kakao={maps:any};
@@ -147,6 +166,11 @@ function MapCanvas({lat,lng,course}:{lat:number;lng:number;course?:Course}){
  const [routeError,setRouteError]=useState(false);
  const [previewing,setPreviewing]=useState(false);
  const [replay,setReplay]=useState(0);
+ const [view3d,setView3d]=useState(false);
+ const [opened3d,setOpened3d]=useState(false);
+ const [buildings,setBuildings]=useState<string|null>(null);
+ const frame=useRef<HTMLIFrameElement>(null);
+ const {resolvedTheme}=useTheme();
  const mobile=useMedia('(max-width:650px)');
  const reduced=useMedia('(prefers-reduced-motion: reduce)');
  const stops=course?.stops||[];
@@ -207,18 +231,56 @@ function MapCanvas({lat,lng,course}:{lat:number;lng:number;course?:Course}){
   // eslint-disable-next-line react-hooks/exhaustive-deps
  },[selected,mobile,ready,route]);
 
+ // 3D 코스 지도: 코스·선택 상태를 Unity 화면(iframe)으로 보내고, 핀 클릭을 받는다.
+ const dark=resolvedTheme==='dark';
+ const scene=opened3d&&plan&&stops.length?scene3d(origin,stops,joinPath(plan.legs)):null;
+ const payload3d=scene&&plan?JSON.stringify({ox:scene.xz(origin)[0],oz:scene.xz(origin)[1],stops:stops.map(s=>{const [x,z]=scene.xz([s.lat,s.lng]);return {name:s.name.replace(/s+/g,' ').slice(0,40),x,z};}),path:scene.thin.flatMap(p=>scene.xz(p)),verified:plan.verified,animate:!reduced,dark}):null;
+ const post3d=(message:Record<string,unknown>)=>frame.current?.contentWindow?.postMessage(message,window.location.origin);
+ useEffect(()=>{
+  if(!payload3d)return;
+  const send=()=>{post3d({type:'nawa-course',payload:payload3d});if(buildings)post3d({type:'nawa-buildings',payload:buildings});post3d({type:'nawa-select',index:selected??-1});};
+  send();
+  const onMessage=(e:MessageEvent)=>{
+   if(e.origin!==window.location.origin||e.source!==frame.current?.contentWindow)return;
+   if(e.data?.type==='nawa-ready')send();
+   if(e.data?.type==='nawa-stop-click'&&typeof e.data.index==='number')setSelected(e.data.index>=0&&e.data.index<stops.length?e.data.index:null);
+  };
+  window.addEventListener('message',onMessage);
+  return()=>window.removeEventListener('message',onMessage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[payload3d,buildings]);
+ useEffect(()=>{if(opened3d)post3d({type:'nawa-select',index:selected??-1});
+ },[selected,opened3d]);
+ // 주변 건물·도로 윤곽. 받지 못하면 건물 없이 보여준다.
+ const routeKey=plan?`${plan.verified}:${plan.legs.length}`:'';
+ useEffect(()=>{
+  if(!opened3d||!plan||!stops.length)return;
+  const s=scene3d(origin,stops,joinPath(plan.legs));
+  const ctrl=new AbortController();
+  fetch('/api/buildings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({center:s.center,radius:s.radius-2}),signal:ctrl.signal})
+   .then(r=>r.ok?r.json() as Promise<MapMesh>:Promise.reject(new Error(String(r.status))))
+   .then(mesh=>{if(mesh.t?.length||mesh.rt?.length)setBuildings(JSON.stringify(mesh));})
+   .catch(()=>{});
+  return()=>ctrl.abort();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ },[opened3d,routeKey]);
+
  const totalMinutes=plan?.verified?plan.legs.reduce((sum,l)=>sum+(legMinutes(l)||0),0):null;
  const status=!stops.length?null:!plan?'경로 확인 중…':plan.verified?`${ROUTE_LABEL[plan.legs[0].source]} · 이동 합계 ${totalMinutes}분`:ROUTE_LABEL.straight;
  const sel=selected!==null?stops[selected]:null;
  const selLeg=selected!==null?plan?.legs[selected]:undefined;
  const fallbackUrl=provider==='kakao'?`https://map.kakao.com/link/map/${lat},${lng}`:`https://www.openstreetmap.org/#map=15/${lat}/${lng}`;
  return <div className="map-container">
-  <div ref={ref} className="leaflet-host" aria-label={provider==='kakao'?'카카오맵 지도':'OpenStreetMap 지도'}/>
-  {status&&<div className={'route-status '+(plan?.verified?'verified':'estimate')} role="status">{previewing&&<b>코스 미리보기</b>}{status}</div>}
-  {!!stops.length&&plan&&!reduced&&!previewing&&<button type="button" className="route-replay" onClick={()=>setReplay(n=>n+1)}>▶ 다시 보기</button>}
-  {failed&&<a className="map-fallback" href={fallbackUrl} target="_blank" rel="noreferrer">지도 연결 지연 · 새 창에서 보기 ↗</a>}
-  {!!stops.length&&<div className="stop-picker" aria-label="장소 선택">{stops.map((s,i)=><button type="button" key={s.id} className={selected===i?'active':''} aria-pressed={selected===i} onClick={()=>{setSelected(i);adapter.current?.focus(i,crowded(i));}}>{i+1}</button>)}</div>}
-  {mobile&&sel&&<div className="stop-sheet" role="dialog" aria-label={`${selected!+1}번 장소 정보`}><button type="button" className="stop-sheet-close" aria-label="닫기" onClick={()=>setSelected(null)}>×</button><b>{selected!+1}. {sel.name}</b><span>{sel.arrival}~{sel.departure} · {sel.category} {sel.duration}분</span><small>{selLeg&&selLeg.source!=='straight'?`이전 지점에서 ${transport} ${legMinutes(selLeg)}분 (${ROUTE_LABEL[selLeg.source]})`:`이전 지점에서 약 ${sel.travel}분 (직선거리 추정)`}</small></div>}
+  <div className="map-stage">
+   <div ref={ref} className="leaflet-host" aria-label={provider==='kakao'?'카카오맵 지도':'OpenStreetMap 지도'}/>
+   {opened3d&&<iframe ref={frame} className="map-3d" src={UNITY_URL} title="3D 코스 지도" hidden={!view3d}/>}
+   {!!stops.length&&plan&&<button type="button" className={'map-3d-toggle'+(view3d?' on':'')} aria-pressed={view3d} onClick={()=>{setOpened3d(true);setView3d(v=>!v);}}>{view3d?'지도로 보기':'3D로 보기'}</button>}
+  </div>
+  {status&&<div className={'route-status '+(plan?.verified?'verified':'estimate')} role="status">{previewing&&!view3d&&<b>코스 미리보기</b>}{status}</div>}
+  {!!stops.length&&plan&&!reduced&&(view3d||!previewing)&&<button type="button" className="route-replay" onClick={()=>view3d?post3d({type:'nawa-replay'}):setReplay(n=>n+1)}>▶ 다시 보기</button>}
+  {failed&&!view3d&&<a className="map-fallback" href={fallbackUrl} target="_blank" rel="noreferrer">지도 연결 지연 · 새 창에서 보기 ↗</a>}
+  {!!stops.length&&<div className="stop-picker" aria-label="장소 선택">{stops.map((s,i)=><button type="button" key={s.id} className={selected===i?'active':''} aria-pressed={selected===i} onClick={()=>{setSelected(i);if(!view3d)adapter.current?.focus(i,crowded(i));}}>{i+1}</button>)}</div>}
+  {(mobile||view3d)&&sel&&<div className="stop-sheet" role="dialog" aria-label={`${selected!+1}번 장소 정보`}><button type="button" className="stop-sheet-close" aria-label="닫기" onClick={()=>setSelected(null)}>×</button><b>{selected!+1}. {sel.name}</b><span>{sel.arrival}~{sel.departure} · {sel.category} {sel.duration}분</span><small>{selLeg&&selLeg.source!=='straight'?`이전 지점에서 ${transport} ${legMinutes(selLeg)}분 (${ROUTE_LABEL[selLeg.source]})`:`이전 지점에서 약 ${sel.travel}분 (직선거리 추정)`}</small></div>}
  </div>;
 }
 

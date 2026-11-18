@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>일단나와 3D 코스 지도</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #f4f0fb; font-family: 'Noto Sans KR', system-ui, -apple-system, 'Malgun Gothic', sans-serif; }
+      body.dark { background: #16131d; }
+      #unity-canvas { width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+      #loading { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 10px; text-align: center; color: #6f6880; font-size: 12px; background: inherit; }
+      #loading img { width: 54px; animation: hop 0.7s ease-in-out infinite alternate; }
+      @keyframes hop { to { transform: translateY(-8px); } }
+      #bar { width: 180px; height: 5px; border-radius: 3px; background: #e2d9f1; overflow: hidden; }
+      #fill { width: 0; height: 100%; background: #9250db; transition: width 0.2s; }
+      body.dark #loading { color: #b9b2c9; }
+      body.dark #bar { background: #2e2840; }
+      /* 글자: Unity가 보내는 화면 좌표에 웹 글꼴로 그린다 */
+      #labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+      .lb { position: absolute; left: 0; top: 0; white-space: nowrap; line-height: 1; will-change: transform; }
+      .lb.num { color: #fff; font-size: 13px; font-weight: 800; text-shadow: 0 1px 2px rgba(60, 20, 110, 0.45); }
+      .lb.name, .lb.sel, .lb.origin { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; font-size: 11px; font-weight: 700; padding: 6px 9px; border-radius: 999px; box-shadow: 0 2px 8px rgba(80, 55, 120, 0.18); }
+      .lb.name { background: rgba(255, 255, 255, 0.94); color: #292536; }
+      .lb.sel { background: #9250db; color: #fff; font-size: 12px; padding: 7px 11px; }
+      .lb.origin { background: rgba(41, 37, 54, 0.86); color: #fff; font-weight: 500; font-size: 10px; padding: 5px 8px; }
+      body.dark .lb.name { background: rgba(38, 33, 52, 0.94); color: #f1edf8; }
+      body.dark .lb.origin { background: rgba(241, 237, 248, 0.9); color: #292536; }
+      #zoom { position: absolute; right: 10px; bottom: 34px; display: grid; gap: 4px; }
+      #zoom button { width: 32px; height: 32px; border: 1px solid #e6dff0; border-radius: 9px; background: #fff; color: #9250db; font-size: 17px; font-weight: 700; line-height: 1; cursor: pointer; }
+      body.dark #zoom button { background: #262134; border-color: #3a3350; color: #c9a8f5; }
+      #credit { position: absolute; right: 8px; bottom: 6px; font-size: 9px; color: #8c859b; display: none; }
+      #credit a { color: inherit; }
+      @media (min-width: 620px) { .lb.name, .lb.origin { font-size: 12px; } .lb.sel { font-size: 13px; } .lb.num { font-size: 15px; } }
+    </style>
+  </head>
+  <body>
+    <canvas id="unity-canvas" tabindex="-1"></canvas>
+    <div id="labels" aria-hidden="true"></div>
+    <div id="zoom"><button type="button" id="zin" aria-label="확대">+</button><button type="button" id="zout" aria-label="축소">−</button></div>
+    <div id="credit">지도 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> 기여자 · <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a> · <a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a> · 건물 높이는 추정값</div>
+    <div id="loading">
+      <img src="/nawa-loading.png" alt="" />
+      <div>3D 코스 지도를 불러오는 중…</div>
+      <div id="bar"><div id="fill"></div></div>
+    </div>
+    <script src="Build/WebGL.loader.js"></script>
+    <script>
+      // ---- 글자 그리기 ----
+      var layer = document.getElementById('labels');
+      var names = []; // 부모 페이지가 보낸 장소명
+      var pool = {};
+      function labelText(kind, key) {
+        if (kind === 'num') return String(+key + 1);
+        if (kind === 'origin') return '출발';
+        return names[+key] || '';
+      }
+      window.nawaLabels = function (lines) {
+        var W = layer.clientWidth, H = layer.clientHeight;
+        var placed = [], seen = {};
+        var rows = lines.split('\n');
+        for (var i = 0; i < rows.length; i++) {
+          var f = rows[i].split('\t');
+          if (f.length < 4) continue;
+          var kind = f[0], isNum = kind === 'num';
+          var id = (isNum ? 'n' : kind === 'origin' ? 'o' : 't') + f[1], el = pool[id];
+          var text = labelText(kind, f[1]);
+          if (!el) { el = pool[id] = document.createElement('div'); layer.appendChild(el); }
+          if (el.dataset.kind !== kind || el.dataset.text !== text) {
+            el.dataset.kind = kind; el.dataset.text = text; el.className = 'lb ' + kind; el.textContent = text; el.dataset.w = '';
+          }
+          if (!el.dataset.w) { el.style.display = ''; el.dataset.w = el.offsetWidth; el.dataset.h = el.offsetHeight; }
+          var w = +el.dataset.w, h = +el.dataset.h;
+          var x = f[2] * W - w / 2, y = isNum ? f[3] * H - h / 2 : f[3] * H - h - 4;
+          seen[id] = true;
+          if (!isNum) {
+            // 먼저 놓인(우선순위 높은) 이름표와 겹치면 숨긴다
+            var hit = false;
+            for (var j = 0; j < placed.length; j++) {
+              var p = placed[j];
+              if (x < p[0] + p[2] + 4 && x + w + 4 > p[0] && y < p[1] + p[3] + 4 && y + h + 4 > p[1]) { hit = true; break; }
+            }
+            if (hit) { el.style.display = 'none'; continue; }
+            placed.push([x, y, w, h]);
+          }
+          el.style.display = '';
+          el.style.transform = 'translate(' + Math.round(x) + 'px,' + Math.round(y) + 'px)';
+        }
+        for (var k in pool) if (!seen[k]) pool[k].style.display = 'none';
+      };
+
+      // ---- 부모 페이지(코스 지도)와 주고받기 ----
+      var V = '2';
+      var instance = null;
+      var pending = { course: null, buildings: null, select: null };
+      function applyCourse(json) {
+        try {
+          var c = JSON.parse(json);
+          names = (c.stops || []).map(function (s) { return String(s.name || ''); });
+          document.body.classList.toggle('dark', !!c.dark);
+        } catch (e) { return; }
+        if (instance) instance.SendMessage('Course', 'SetCourse', json); else pending.course = json;
+      }
+      window.addEventListener('message', function (e) {
+        if (e.origin !== window.location.origin || e.source !== window.parent || !e.data) return;
+        var d = e.data;
+        if (d.type === 'nawa-course' && typeof d.payload === 'string') applyCourse(d.payload);
+        else if (d.type === 'nawa-buildings' && typeof d.payload === 'string') {
+          document.getElementById('credit').style.display = 'block';
+          if (instance) instance.SendMessage('Course', 'SetBuildings', d.payload); else pending.buildings = d.payload;
+        } else if (d.type === 'nawa-select' && typeof d.index === 'number') {
+          if (instance) instance.SendMessage('Course', 'Select', String(d.index)); else pending.select = d.index;
+        } else if (d.type === 'nawa-replay' && instance) instance.SendMessage('Course', 'Replay', '');
+      });
+      document.getElementById('zin').onclick = function () { if (instance) instance.SendMessage('Course', 'Zoom', '1'); };
+      document.getElementById('zout').onclick = function () { if (instance) instance.SendMessage('Course', 'Zoom', '-1'); };
+
+      createUnityInstance(
+        document.getElementById('unity-canvas'),
+        {
+          // 빌드를 새로 넣을 때마다 V 를 올려야 브라우저가 이전 파일을 다시 쓰지 않는다
+          dataUrl: 'Build/WebGL.data?v=' + V,
+          frameworkUrl: 'Build/WebGL.framework.js?v=' + V,
+          codeUrl: 'Build/WebGL.wasm?v=' + V,
+          companyName: 'IldanNawa',
+          productName: 'IldanNawaCourse3D',
+          productVersion: '0.1',
+        },
+        function (p) { document.getElementById('fill').style.width = Math.round(p * 100) + '%'; }
+      )
+        .then(function (u) {
+          instance = u;
+          document.getElementById('loading').style.display = 'none';
+          if (pending.course) u.SendMessage('Course', 'SetCourse', pending.course);
+          if (pending.buildings) u.SendMessage('Course', 'SetBuildings', pending.buildings);
+          if (pending.select !== null) u.SendMessage('Course', 'Select', String(pending.select));
+        })
+        .catch(function (err) {
+          document.getElementById('loading').textContent = '3D 화면을 불러오지 못했어요. 지도로 보기를 눌러 주세요.';
+          console.error(err);
+        });
+    </script>
+  </body>
+</html>
