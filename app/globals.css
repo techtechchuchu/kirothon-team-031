@@ -169,3 +169,4 @@ input,select,textarea{color:var(--ink);caret-color:var(--purple);color-scheme:in
 .map-3d-toggle{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:620;font-size:11px;font-weight:700;padding:8px 15px;border-radius:999px;background:var(--purple);color:var(--on-accent);box-shadow:0 4px 14px #69478c40;white-space:nowrap}
 .map-3d-toggle.on{background:var(--surface);color:var(--purple);border:1px solid var(--line)}
 .lang-switch select{max-width:112px}
+@media(max-width:1000px){.lang-switch select{max-width:86px}html:not([lang=ko]) nav{gap:4px}html:not([lang=ko]) nav button{font-size:0;gap:4px;padding:0 9px}html:not([lang=ko]) nav button span{font-size:9px}html:not([lang=ko]) .demo-label{display:none}}
