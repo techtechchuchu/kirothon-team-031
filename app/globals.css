@@ -170,4 +170,4 @@ input,select,textarea{color:var(--ink);caret-color:var(--purple);color-scheme:in
 .map-3d-toggle.on{background:var(--surface);color:var(--purple);border:1px solid var(--line)}
 .lang-switch select{max-width:112px}
 @media(max-width:1000px){.lang-switch select{max-width:86px}html:not([lang=ko]) nav{gap:4px}html:not([lang=ko]) nav button{font-size:0;gap:4px;padding:0 9px}html:not([lang=ko]) nav button span{font-size:9px}html:not([lang=ko]) .demo-label{display:none}}
-@media(min-width:651px) and (max-width:900px){.site-header .demo-label{display:none}.site-header nav{gap:2px}.site-header nav button{padding:0 7px}.site-header{gap:10px}}
+@media(min-width:651px) and (max-width:900px){.site-header .demo-label{display:none}.site-header nav{gap:2px}.site-header nav button{padding:0 5px}.site-header{gap:8px;padding:0 16px}}
